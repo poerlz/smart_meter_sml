@@ -1,2 +1,2 @@
-# smart meter SML Protocol
+# Smart Meter SML Protocol
 SML protocol to read data
