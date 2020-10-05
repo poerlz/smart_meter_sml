@@ -33,5 +33,8 @@ type SMLMessageBody struct {
 	AttentionResponse        SMLAttentionRes        // [0x0000FF01]
 }
 
-type EndOfSMLMsg struct {
+type EndOfSMLMsg uint8
+
+func ParseSMLMessage(raw []byte) (data []SMLMessage) {
+	return data
 }

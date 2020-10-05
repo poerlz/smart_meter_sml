@@ -11,6 +11,10 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# build files from project
+smart_meter_sml
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 testdaten/
+doc/
