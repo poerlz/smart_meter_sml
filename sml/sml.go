@@ -21,6 +21,7 @@ var (
 	// End   = []byte{'1b', '1b', '1b', '1b'}     // escape sequenz
 )
 
+type Stream []byte
 type SMLTest struct {
 	Sequence SMLStart
 	CRC16    uint16
@@ -28,22 +29,25 @@ type SMLTest struct {
 }
 
 type SML struct {
+	Stream   []byte
 	Sequence SMLStart
 	Version  SMLVersion
-	Stream   []byte
 	Messages []SMLMessage
 	CRC16    uint16
 }
 
 func New(raw []byte) (sml SML) {
 
-	sml.Stream = raw
-	sml.Cut()
-	checksum := bytes.NewBuffer(sml.Stream[len(sml.Stream)-2:])
-	if err := binary.Read(checksum, binary.LittleEndian, &sml.CRC16); err != nil {
-		panic(err)
-	}
+	trim(&raw)
 	// tmp := SML{}
+	sml.Parse(&raw)
+
+	// sml.Stream = raw
+	// sml.Cut()
+	// checksum := bytes.NewBuffer(sml.Stream[len(sml.Stream)-2:])
+	// if err := binary.Read(checksum, binary.LittleEndian, &sml.CRC16); err != nil {
+	// 	panic(err)
+	// }
 	// spew.Dump(SMLParse(sml.Stream, tmp))
 	// SMLParse2(sml.Stream, tmp)
 	// spew.Dump(tmp)
@@ -57,16 +61,48 @@ func read(b *[]byte, data interface{}) {
 	}
 }
 
-func (s *SMLStart) Parse(raw *[]byte) {
-	read(raw, s)
+func Cut(raw *[]byte, len int) {
+	tmp := *raw
+	*raw = tmp[len:]
 }
 
-func (s *OctetString) Parse(raw *[]byte) {
-	len := make([]byte, 1)
-	read(raw, len)
-	text := make([]byte, len[0])
-	read(raw, text)
-	*s = text
+func (s *SML) Parse(raw *[]byte) {
+
+	v := reflect.ValueOf(s)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	// spew.Dump(&raw)
+	switch v.Kind() {
+	case reflect.Slice:
+		fmt.Println("v => slice")
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			t := v.Field(i).Interface()
+			switch t.(type) {
+			case SMLStart:
+				s.Sequence.Parse(raw)
+			case SMLVersion:
+				s.Version.Parse(raw)
+			case []SMLMessage:
+				fmt.Println("test SMLMessage")
+				buf := bytes.NewBuffer(*raw)
+				if bytes.Equal(buf.Next(1), []byte("\x76")) {
+					fmt.Println("Message found")
+					Cut(raw, 1)
+					tmp := SMLMessage{}
+					tmp.Parse(raw)
+					spew.Dump(tmp.GroupNo)
+				}
+				// s.Messages
+			case uint16:
+				fmt.Println("test uint16")
+			case []byte:
+				fmt.Println("test byte")
+				s.Stream = *raw
+			}
+		}
+	}
 }
 
 func (s *SMLTest) Parse(raw *[]byte) {
@@ -74,33 +110,21 @@ func (s *SMLTest) Parse(raw *[]byte) {
 	v := reflect.ValueOf(s)
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
-		fmt.Printf("---------------- [refect ptr] -----------------\n")
-		spew.Dump(v.Kind())
-		fmt.Printf("---------------- [/refect ptr] -----------------\n")
 	}
 	switch v.Kind() {
 	case reflect.Ptr:
 		v = v.Elem()
 	case reflect.Slice:
-		fmt.Println("v => slice")
 	case reflect.Struct:
-		fmt.Println("v => struct")
 		for i := 0; i < v.NumField(); i++ {
-			t := v.Field(i)
-			// spew.Dump(t.Type().String())
-			spew.Dump(t.Interface())
-			// spew.Dump(f.Kind())
-
-			switch t.Type().String() {
-			case "uint16":
-				fmt.Println("test uint16")
+			t := v.Field(i).Interface()
+			switch t.(type) {
+			case uint16:
 				read(raw, &s.CRC16)
-			case "sml.SMLStart":
-				fmt.Println("test smlStart")
-
+				Cut(raw, 2)
+			case SMLStart:
 				s.Sequence.Parse(raw)
-			case "sml.OctetString":
-				fmt.Println("test octetstring")
+			case OctetString:
 				s.Text.Parse(raw)
 			}
 		}
@@ -108,173 +132,6 @@ func (s *SMLTest) Parse(raw *[]byte) {
 		fmt.Println("v => other")
 	}
 
-}
-
-func SMLParse2(raw []byte, data interface{}) {
-
-	fmt.Printf("---------------- [parse2] -----------------\n")
-
-	switch data := data.(type) {
-	case *uint32:
-		fmt.Println("test uint32")
-	case *uint16:
-		fmt.Println("test uint16")
-
-	case *SMLMessage:
-		fmt.Println("test SMLMessage")
-		spew.Dump(data)
-	case *SML:
-		fmt.Println("test SML")
-		spew.Dump(data)
-	case *SMLVersion:
-		fmt.Println("test SMLVersion")
-		read(&raw, data)
-	case *SMLStart:
-		fmt.Println("test SMLStart")
-		br := make([]byte, 10)
-		// read(&raw, br)
-		spew.Dump(br)
-
-	case *SMLTime:
-		fmt.Println("test SMLTime")
-		// read(&raw, data)
-	case *OctetString:
-		fmt.Println("test OctetString")
-		// read(&raw, &data)
-	default:
-		fmt.Println("test default")
-		// read(&raw, data)
-		// spew.Dump(data)
-	}
-	v := reflect.ValueOf(data)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-		fmt.Printf("---------------- [refect ptr] -----------------\n")
-		spew.Dump(v.Kind())
-		fmt.Printf("---------------- [/refect ptr] -----------------\n")
-	}
-	switch v.Kind() {
-	case reflect.Ptr:
-		v = v.Elem()
-	case reflect.Slice:
-		fmt.Println("v => slice")
-	case reflect.Struct:
-		fmt.Println("v => struct")
-		for i := 0; i < v.NumField(); i++ {
-			t := v.Field(i)
-			spew.Dump(t.Type().String())
-			// tmp := SMLType(t)
-			// f := reflect.ValueOf(&tmp)
-			// spew.Dump(f.Kind())
-
-			switch t.Type().String() {
-			case "sml.SMLStart":
-				tmp := SMLStart{}
-
-				SMLParse2(raw, &tmp)
-				spew.Dump(tmp)
-
-			case "sml.OctetString":
-				tmp := OctetString{}
-				SMLParse2(raw, &tmp)
-				spew.Dump(tmp)
-			}
-			// spew.Dump(v.Field(i).Type())
-
-		}
-	default:
-		fmt.Println("v => other")
-	}
-
-	// spew.Dump(v.NumField())
-	// spew.Dump(v.Field(1))
-	// spew.Dump(v.Field(1).Type().Name())
-	// bs := make([]byte, 4)
-	// read(&raw, &bs)
-	// data = bs
-	// fmt.Println(bs)
-
-	// spew.Dump(tmp)
-	fmt.Printf("\n---------------- [/parse2] -----------------\n")
-	// spew.Dump(data)
-	// spew.Dump(st.Elem())
-
-	fmt.Printf("\n---------------- [//parse2] -----------------\n")
-}
-
-func SMLParse(raw []byte, data interface{}) (s SML) {
-
-	// raw := s.Stream
-	st := reflect.TypeOf(data)
-	for i := 0; i < st.NumField(); i++ {
-		fmt.Println(st.Field(i).Type)
-		// fmt.Println(st.Field(i).Type.Kind())
-		// fmt.Println(st.Field(i).Type.Size())
-		// fmt.Printf("%x \n", st.Field(i).Type.Size())
-		switch st.Field(i).Type.String() {
-		case "sml.SMLStart":
-			fmt.Println("Kind Start")
-			read(&raw, &s.Sequence)
-			raw = raw[len(s.Sequence):]
-		case "sml.SMLVersion":
-			fmt.Println("Kind Version")
-			read(&raw, &s.Version)
-			raw = raw[len(s.Version):]
-		case "[]sml.SMLMessage":
-			fmt.Println("Kind SMLMessage")
-			// s.Messages = append(s.Messages, SMLParse(raw, SMLMessage{}))
-		case "uint16":
-			fmt.Println("Kind uint16")
-		case "sml.OctetString":
-			fmt.Println("Kind Octetstring")
-		default:
-			fmt.Println("Kind other")
-		}
-		// switch st.Field(i).Type.Kind() {
-		// case reflect.Uint8:
-		// 	fmt.Println("Kind is 1")
-		// case reflect.Uint16:
-		// 	fmt.Println("size is 2")
-		// case reflect.Array:
-		// 	fmt.Println("kind is a array")
-		// 	r := bytes.NewBuffer(raw)
-		// 	bs := make([]byte, st.Field(i).Type.Size())
-		// 	if err := binary.Read(r, binary.LittleEndian, bs); err != nil {
-		// 		panic(err)
-		// 	}
-		// 	fmt.Printf("% x\n", bs)
-		// case reflect.Slice:
-		// 	fmt.Println("Kind is a Slice")
-		// 	// s := sizeof(v.Type).ELem()
-		// 	// fmt.Fprintln(s)
-		// }
-		// spew.Dump(st.Field(i))
-		fmt.Println("---------------------")
-	}
-	// var data SML
-	// buf := bytes.NewBuffer(s.Stream)
-	// if err := binary.Read(buf, binary.LittleEndian, &data); err != nil {
-	// 	panic(err)
-	// }
-	// VersionStart := bytes.Index(s.Stream, Version)
-	// version := s.Stream[VersionStart:]
-	// for _, v := range version {
-	// 	if string(v) == "\x76" {
-	// 		fmt.Printf("% x\n", v)
-	// 	}
-	// }
-
-	// switch data.(type) {
-	// case *uint16:
-	// 	fmt.Println("test 1")
-	// case SML:
-	// 	fmt.Println("test SML")
-	// case SMLMessage:
-	// 	fmt.Println("test SMLMessage")
-	// default:
-	// 	fmt.Printf("test default")
-	// }
-	return s
 }
 
 func (s *SML) SMLCheckCRC16() bool {
@@ -287,17 +144,20 @@ func (s *SML) SMLCheckCRC16() bool {
 	return false
 }
 
+func trim(raw *[]byte) {
+	Stream := *raw
+	start := bytes.Index(Stream, Search)
+	stop := bytes.Index(Stream[start+len(Search):], Search)
+	if start != 0 && stop != -1 {
+		*raw = Stream[start : stop+len(Search)+start]
+	}
+}
+
 func (s *SML) Cut() {
 	start := bytes.Index(s.Stream, Search)
 	stop := bytes.Index(s.Stream[start+len(Search):], Search)
 	if start != 0 && stop != -1 {
 		s.Stream = s.Stream[start : stop+len(Search)+start]
-		// var checksum uint16
-
-		// if err := binary.Read(s.Stream[len(s.Stream)-2:], binary.LittleEndian, &checksum); err != nil {
-		// 	panic(err)
-		// }
-		// s.CRC16 = checksum
 	}
 }
 

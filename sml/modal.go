@@ -1,5 +1,9 @@
 package sml
 
+import (
+	"encoding/binary"
+)
+
 type SMLTime struct {
 	SecIndex       uint32
 	Timestamp      SMLTimestamp
@@ -88,4 +92,23 @@ type SMLTupelEntry struct {
 	ScalerR3        int8
 	ValueR3         int64
 	SignaturemAR2R3 OctetString
+}
+
+func (s *SMLStart) Parse(raw *[]byte) {
+	read(raw, s)
+	Cut(raw, len(s))
+}
+
+func (s *SMLVersion) Parse(raw *[]byte) {
+	read(raw, s)
+	Cut(raw, len(s))
+}
+
+func (s *OctetString) Parse(raw *[]byte) {
+	len := make([]byte, 1)
+	read(raw, len)
+	text := make([]byte, len[0])
+	read(raw, text)
+	*s = text
+	Cut(raw, binary.Size(text))
 }

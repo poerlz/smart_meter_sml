@@ -1,5 +1,13 @@
 package sml
 
+import (
+	"bytes"
+	"fmt"
+	"reflect"
+
+	"github.com/davecgh/go-spew/spew"
+)
+
 type SMLMessage struct {
 	TransactionID OctetString
 	GroupNo       uint8
@@ -37,4 +45,40 @@ type EndOfSMLMsg uint8
 
 func ParseSMLMessage(raw []byte) (data []SMLMessage) {
 	return data
+}
+
+func (s *SMLMessage) Parse(raw *[]byte) {
+
+	v := reflect.ValueOf(s)
+
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	spew.Dump(v)
+	switch v.Kind() {
+	case reflect.Slice:
+		fmt.Println("v => slice")
+	case reflect.Struct:
+		fmt.Println("v => struct")
+		for i := 0; i < v.NumField(); i++ {
+			t := v.Field(i).Interface()
+			switch t.(type) {
+			case OctetString:
+				s.TransactionID.Parse(raw)
+			case uint8:
+				fmt.Printf("---------------- [message] -----------------\n")
+				buf := bytes.NewBuffer(*raw)
+				spew.Dump(buf.Next(2))
+				read(raw, &s.GroupNo)
+				Cut(raw, 1)
+				fmt.Printf("---------------- [/message] -----------------\n")
+			case SMLMessageBody:
+			case uint16:
+				read(raw, &s.CRC16)
+				Cut(raw, 2)
+			case EndOfSMLMsg:
+			}
+		}
+	}
 }
